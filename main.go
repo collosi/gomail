@@ -1,32 +1,34 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"net/smtp"
-	"io"
+	"bytes"
 	"flag"
-	"strings"
+	"fmt"
+	"io"
 	"net/mail"
+	"net/smtp"
+	"os"
+	"strings"
 )
 
 var (
-	fUseTLS = flag.Bool("l", true, "use STARTTLS")
-	fFrom = flag.String("f", "", "from address")
-	fTo = flag.String("t", "", "to address list (comma separated)")
-	fCC = flag.String("cc", "", "CC address list (comma separated)")
-	fBCC = flag.String("bcc", "", "BCC address list (comma separated)")
-	fServer = flag.String("s", "smtp.gmail.com:587", "SMTP server")
+	fUseTLS  = flag.Bool("l", true, "use STARTTLS")
+	fFrom    = flag.String("f", "", "from address")
+	fTo      = flag.String("t", "", "to address list (comma separated)")
+	fCC      = flag.String("cc", "", "CC address list (comma separated)")
+	fBCC     = flag.String("bcc", "", "BCC address list (comma separated)")
+	fServer  = flag.String("s", "smtp.gmail.com:587", "SMTP server")
 	fMessage = flag.String("m", "", "message body (uses stdin if blank)")
 	fSubject = flag.String("u", "", "subject")
 
-	fAuth = flag.Bool("a", true, "use SMTP authentication")
-	fAuthUser = flag.String("xu", "", "username for SMTP authentication (env var "+GOMAIL_USER+" if blank)")
+	fAuth         = flag.Bool("a", true, "use SMTP authentication")
+	fAuthUser     = flag.String("xu", "", "username for SMTP authentication (env var "+GOMAIL_USER+" if blank)")
 	fAuthPassword = flag.String("xp", "", "password for SMTP authentication (env var "+GOMAIL_PASS+" if blank)")
+	fBufferSize   = flag.Int("b", 5e6, "buffer size (will fill before connecting")
 )
 
-const(
-	CRLF = "\r\n"
+const (
+	CRLF        = "\r\n"
 	GOMAIL_USER = "GOMAIL_USER"
 	GOMAIL_PASS = "GOMAIL_PASS"
 )
@@ -37,7 +39,7 @@ func usage() {
 	os.Exit(1)
 }
 
-func fatal(f string, args ... interface{}) {
+func fatal(f string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, f, args...)
 	os.Exit(1)
 }
@@ -51,6 +53,28 @@ func main() {
 	mustNotBlank(*fFrom)
 	mustNotBlank(*fServer)
 
+	buf := make([]byte, *fBufferSize)
+
+	var err error
+
+	var in io.Reader
+
+	if *fMessage == "" {
+		n := 0
+		for n < len(buf) && err != nil {
+			var nn int
+			nn, err = os.Stdin.Read(buf)
+			n += nn
+		}
+		rr := bytes.NewBuffer(buf[:n])
+		if err == nil {
+			in = io.MultiReader(rr, os.Stdin)
+		} else {
+			in = rr
+		}
+	} else {
+		in = bytes.NewBuffer([]byte(*fMessage))
+	}
 	fromList, err := parseAddressList(*fFrom)
 	if len(fromList) != 1 {
 		fmt.Fprintf(os.Stderr, "%s\n", "Only one from address allowed")
@@ -77,7 +101,7 @@ func main() {
 	if err != nil {
 		fatal("%v: error connecting to %s\n", err, *fServer)
 	}
-    if ok, _ := client.Extension("STARTTLS"); ok {
+	if ok, _ := client.Extension("STARTTLS"); ok {
 		err = client.StartTLS(nil)
 		if err != nil {
 			fatal("%v: error starting TLS\n", err)
@@ -95,7 +119,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "WARN: credentials supplied but server does not support authentication")
 	}
 
-	defer func () {
+	defer func() {
 		err := client.Quit()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v: error during quit", err)
@@ -129,17 +153,14 @@ func main() {
 		io.WriteString(out, "CC: "+cc.String()+CRLF)
 	}
 	if *fSubject != "" {
-		io.WriteString(out, "Subject: "+(*fSubject)+CRLF)		
+		io.WriteString(out, "Subject: "+(*fSubject)+CRLF)
 	}
 	io.WriteString(out, CRLF)
 
-	if *fMessage == "" {
-		io.Copy(out, os.Stdin)
-	} else {
-		_, err = io.WriteString(out, *fMessage)
-		if err != nil {
-			fatal("%v: error outputting data\n", err)
-		}
+	_, err = io.Copy(out, in)
+
+	if err != nil {
+		fatal("%v: error outputting data\n", err)
 	}
 }
 
@@ -165,7 +186,7 @@ func mustNotBlank(s string) {
 // vars "GOMAIL_USER" and "GOMAIL_PASS"
 func getCredentials(u, p string) (user, pass string) {
 	if u == "" {
-		user = os.Getenv(GOMAIL_USER)	
+		user = os.Getenv(GOMAIL_USER)
 	} else {
 		user = u
 	}
@@ -190,7 +211,7 @@ func parseAddressList(l string) ([]*mail.Address, error) {
 	return htemp.AddressList(key)
 }
 
-func emailsOnly(lists ... []*mail.Address) (emails []string) {
+func emailsOnly(lists ...[]*mail.Address) (emails []string) {
 	emails = make([]string, 0)
 	for _, list := range lists {
 		for _, addr := range list {
