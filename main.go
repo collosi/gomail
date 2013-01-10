@@ -61,7 +61,7 @@ func main() {
 
 	if *fMessage == "" {
 		n := 0
-		for n < len(buf) && err != nil {
+		for n < len(buf) && err == nil {
 			var nn int
 			nn, err = os.Stdin.Read(buf)
 			n += nn
