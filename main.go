@@ -24,7 +24,7 @@ var (
 	fAuth         = flag.Bool("a", true, "use SMTP authentication")
 	fAuthUser     = flag.String("xu", "", "username for SMTP authentication (env var "+GOMAIL_USER+" if blank)")
 	fAuthPassword = flag.String("xp", "", "password for SMTP authentication (env var "+GOMAIL_PASS+" if blank)")
-	fBufferSize   = flag.Int("b", 5e6, "buffer size (will fill before connecting")
+	fBufferSize   = flag.Int("b", 5e6, "buffer size (will fill before connecting)")
 )
 
 const (
