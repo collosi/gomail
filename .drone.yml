@@ -2,4 +2,6 @@ image: go1.3
 git:
   path: github.com/laslowh/gomail
 script:
+  - ls
   - go test
+
